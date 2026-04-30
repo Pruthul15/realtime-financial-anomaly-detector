@@ -12,7 +12,10 @@ def fetch_prices(symbols: tuple[str, ...]) -> list[dict]:
     payloads: list[dict] = []
     for symbol in symbols:
         ticker = yf.Ticker(symbol)
-        latest = ticker.fast_info.get("lastPrice")
+        try:
+            latest = ticker.fast_info.last_price
+        except Exception:
+            latest = None
         if latest is None:
             continue
         payloads.append(
@@ -44,3 +47,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
