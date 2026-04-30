@@ -1,46 +1,31 @@
-import json
 import time
-from datetime import datetime, timezone
+import json
+import random
+from kafka import KafkaProducer
 
-import yfinance as yf
-from confluent_kafka import Producer
+producer = KafkaProducer(
+    bootstrap_servers="localhost:9092",
+    value_serializer=lambda v: json.dumps(v).encode("utf-8")
+)
 
-from config import settings
+symbol = "AAPL"
+price = 271.35
 
+while True:
+    if random.random() < 0.2:
+        send_price = price * random.uniform(3, 6)
+        print("⚠️ Injecting anomaly...")
+    else:
+        send_price = price + random.uniform(-1, 1)
 
-def fetch_prices(symbols: tuple[str, ...]) -> list[dict]:
-    payloads: list[dict] = []
-    for symbol in symbols:
-        ticker = yf.Ticker(symbol)
-        latest = ticker.fast_info.get("lastPrice")
-        if latest is None:
-            continue
-        payloads.append(
-            {
-                "symbol": symbol,
-                "price": float(latest),
-                "source_ts": datetime.now(timezone.utc).isoformat(),
-                "provider": "yfinance",
-            }
-        )
-    return payloads
+    message = {
+        "symbol": symbol,
+        "price": round(send_price, 2)
+    }
 
+    print("Sending:", message)
+    producer.send("market_data", message)
+    producer.flush()
 
-def main() -> None:
-    producer = Producer({"bootstrap.servers": settings.kafka_bootstrap_servers})
-
-    while True:
-        records = fetch_prices(settings.symbols)
-        for record in records:
-            producer.produce(
-                settings.kafka_topic,
-                key=record["symbol"],
-                value=json.dumps(record).encode("utf-8"),
-            )
-        producer.flush()
-        print(f"Published {len(records)} tick(s) at {datetime.now(timezone.utc).isoformat()}")
-        time.sleep(settings.poll_seconds)
-
-
-if __name__ == "__main__":
-    main()
+    price = send_price
+    time.sleep(5)
