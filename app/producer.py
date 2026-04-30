@@ -1,50 +1,35 @@
-import json
 import time
-from datetime import datetime, timezone
-
+import json
+from kafka import KafkaProducer
 import yfinance as yf
-from confluent_kafka import Producer
 
-from config import settings
+producer = KafkaProducer(
+    bootstrap_servers='localhost:9092',
+    value_serializer=lambda v: json.dumps(v).encode('utf-8')
+)
 
+symbol = "AAPL"
 
-def fetch_prices(symbols: tuple[str, ...]) -> list[dict]:
-    payloads: list[dict] = []
-    for symbol in symbols:
-        ticker = yf.Ticker(symbol)
-        try:
-            latest = ticker.fast_info.last_price
-        except Exception:
-            latest = None
-        if latest is None:
-            continue
-        payloads.append(
-            {
+while True:
+    try:
+        stock = yf.Ticker(symbol)
+        data = stock.history(period="1d", interval="1m")
+
+        if not data.empty:
+            latest = data.tail(1).iloc[0]
+
+            message = {
                 "symbol": symbol,
-                "price": float(latest),
-                "source_ts": datetime.now(timezone.utc).isoformat(),
-                "provider": "yfinance",
+                "price": float(latest["Close"]),
             }
-        )
-    return payloads
 
+            print("Sending:", message)
+            producer.send("market_data", message)
 
-def main() -> None:
-    producer = Producer({"bootstrap.servers": settings.kafka_bootstrap_servers})
+        # 🔥 IMPORTANT: slow down requests
+        time.sleep(90)
 
-    while True:
-        records = fetch_prices(settings.symbols)
-        for record in records:
-            producer.produce(
-                settings.kafka_topic,
-                key=record["symbol"],
-                value=json.dumps(record).encode("utf-8"),
-            )
-        producer.flush()
-        print(f"Published {len(records)} tick(s) at {datetime.now(timezone.utc).isoformat()}")
-        time.sleep(settings.poll_seconds)
-
-
-if __name__ == "__main__":
-    main()
-
+    except Exception as e:
+        print("Error:", e)
+        print("Sleeping to avoid rate limit...")
+        time.sleep(120)
