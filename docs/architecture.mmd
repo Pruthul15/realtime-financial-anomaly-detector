@@ -1,0 +1,9 @@
+flowchart LR
+    API[yfinance API] --> P[Producer]
+    P --> K[(Kafka Topic: market_ticks)]
+    K --> C[Sentinel Consumer]
+    C -->|GE pass| DB1[(Postgres: clean_market_data)]
+    C -->|GE fail| DB2[(Postgres: quarantine_logs)]
+    C --> A[Slack/Discord Alerts]
+    DB1 --> BI[Power BI Data Integrity Dashboard]
+    DB2 --> BI
